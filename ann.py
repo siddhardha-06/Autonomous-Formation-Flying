@@ -73,6 +73,16 @@ def predict_topk(p, X, k=5, batch=4096):
     return np.concatenate(out)
 
 
+def predict_proba(p, X, batch=4096):
+    """Softmax class probabilities (N, 4800), evaluated in batches."""
+    out = []
+    for s in range(0, len(X), batch):
+        logits = forward(p, X[s:s + batch])[0].astype(np.float64)
+        e = np.exp(logits - logits.max(1, keepdims=True))
+        out.append(e / e.sum(1, keepdims=True))
+    return np.concatenate(out)
+
+
 def accuracy(p, X, y):
     return float((predict(p, X) == y).mean())
 
@@ -118,3 +128,6 @@ class ANNPredictor:
 
     def predict(self, X):
         return predict(self.p, np.atleast_2d(X).astype(np.float32))
+
+    def predict_proba(self, X):
+        return predict_proba(self.p, np.atleast_2d(X).astype(np.float32))

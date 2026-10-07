@@ -1,6 +1,7 @@
 """Train the ANN pose-label classifier and reproduce paper Figs. 4 and 5.
 
 Usage:  python train_ann.py --epochs 20
+        python train_ann.py --eval-only        # re-evaluate the saved model, no training
 Outputs: models/ann.npz, models/error_pool.npy, results/fig4_*.png, results/fig5_*.png
 """
 import argparse
@@ -10,7 +11,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from config import *
 import ann
-from discretize import label_to_pose, pose_to_label
+from discretize import label_to_pose, pose_to_label, soft_pose
 
 
 def hist_fig(err, title, path, log=False):
@@ -29,15 +30,19 @@ if __name__ == "__main__":
     ap.add_argument("--batch", type=int, default=512)
     ap.add_argument("--lr", type=float, default=1e-3)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--eval-only", action="store_true", help="skip training, evaluate models/ann.npz")
     a = ap.parse_args()
 
-    tr, va = np.load(DATA_DIR / "train.npz"), np.load(DATA_DIR / "val.npz")
-    Xtr, ytr, Xva, yva, Pva = tr["X"], tr["y"], va["X"], va["y"], va["poses"]
-    rng = np.random.default_rng(a.seed)
-    params = ann.init_params(rng)
-    print(f"train {Xtr.shape}, val {Xva.shape}, classes {N_LABELS}")
-    hist = ann.train(params, Xtr, ytr, Xva, yva, a.epochs, a.batch, a.lr, rng=rng,
-                     ckpt=MODEL_DIR / "ann.npz")
+    va = np.load(DATA_DIR / "val.npz")
+    Xva, yva, Pva = va["X"], va["y"], va["poses"]
+    if not a.eval_only:
+        tr = np.load(DATA_DIR / "train.npz")
+        Xtr, ytr = tr["X"], tr["y"]
+        rng = np.random.default_rng(a.seed)
+        params = ann.init_params(rng)
+        print(f"train {Xtr.shape}, val {Xva.shape}, classes {N_LABELS}")
+        hist = ann.train(params, Xtr, ytr, Xva, yva, a.epochs, a.batch, a.lr, rng=rng,
+                         ckpt=MODEL_DIR / "ann.npz")
     params = ann.load()                           # best-validation checkpoint
 
     # ---- evaluation on validation set (batched: full 40k x 4800 logits would need ~2 GB) ----
@@ -59,6 +64,14 @@ if __name__ == "__main__":
     wrong = pred != yva
     adj = (np.abs(err_lab[wrong]) <= np.array([15.0, 10.0, 5.0, 15.0]) + 1e-6).all(1).mean()
     print(f"Misclassified samples that land in an ADJACENT bin: {adj:.3f}")
+
+    # extension: softmax-weighted mean of bin centres instead of the arg-max bin centre
+    err_soft = true4 - soft_pose(ann.predict_proba(params, Xva))
+    for nme, e in (("arg-max bin centre", err_true), ("softmax mean      ", err_soft)):
+        print(f"{nme}: RMS x,y,z [m], phi [deg] = {np.round(np.sqrt((e ** 2).mean(0)), 2)}   "
+              f"3-D position RMS = {np.sqrt((e[:, :3] ** 2).sum(1).mean()):.2f} m")
+    if a.eval_only:
+        raise SystemExit
 
     fig, ax = plt.subplots(1, 2, figsize=(9, 3.5))
     ax[0].plot([h[0] for h in hist]); ax[0].set_title("train loss"); ax[0].set_xlabel("epoch")

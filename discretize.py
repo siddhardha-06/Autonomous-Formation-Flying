@@ -24,3 +24,14 @@ def label_to_pose(labels):
         lo, hi, n = POSE_BINS[key]
         out[:, k] = lo + (idx[k] + 0.5) * (hi - lo) / n
     return out
+
+
+BIN_CENTERS = label_to_pose(np.arange(np.prod(BIN_SHAPE)))                 # (4800,4)
+BIN_WIDTHS = np.array([(POSE_BINS[k][1] - POSE_BINS[k][0]) / POSE_BINS[k][2] for k in _KEYS])
+
+
+def soft_pose(probs):
+    """EXTENSION: softmax-weighted mean of the bin centres, (N,4800) -> (N,4) [x, y, z, phi_deg].
+    A continuous estimate that interpolates between neighbouring bins instead of snapping
+    to the arg-max bin centre."""
+    return probs @ BIN_CENTERS
