@@ -1,0 +1,7 @@
+# regenerable synthetic dataset (~90 MB) - recreate with: python data_gen.py
+data/*.npz
+__pycache__/
+*.pyc
+.venv/
+venv/
+.ipynb_checkpoints/
