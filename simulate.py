@@ -4,6 +4,8 @@ Usage:  python simulate.py                 # paper configs, averaged over 10 Mon
         python simulate.py --likelihood gauss --refine
         python simulate.py --likelihood gauss --refine --known-los
         python simulate.py --seeds 1              # quick single run (live demo)
+        python simulate.py --likelihood gauss --proposal softmax          # improved PF
+        python simulate.py --likelihood gauss --proposal softmax --sigma-px 1 --refine --known-los
 """
 import argparse, json
 import numpy as np
@@ -13,7 +15,7 @@ import matplotlib.pyplot as plt
 from config import *
 from aircraft import observe, rot_matrix, measure_los
 from data_gen import features_to_input
-from discretize import label_to_pose
+from discretize import label_to_pose, soft_pose
 from ann import ANNPredictor
 from particle_filter import ParticleFilter
 from refine import refine_pose
@@ -52,21 +54,26 @@ def run_once(seed, a, predictor, pool, t, truth, u_f):
     K = len(t)
     uv, det = observe(truth, rng, noise=True)                  # simulated CNN detections
     los = measure_los(truth[:, :3], rng) if a.known_los else [None] * K
-    labels = predictor.predict(features_to_input(uv, det))
-    lab4 = label_to_pose(labels)                               # (K,4) x,y,z,phi_deg
+    probs = predictor.predict_proba(features_to_input(uv, det))   # (K,4800)
+    lab4 = label_to_pose(probs.argmax(1))                      # (K,4) x,y,z,phi_deg
+
+    def as_pose(p4):
+        est = np.column_stack([p4[:, :3], np.radians(p4[:, 3]), np.zeros((K, 2))])
+        if a.known_los:                                        # keep label range, use gimbal bearing
+            est[:, :3] = np.linalg.norm(est[:, :3], axis=1, keepdims=True) * los
+        return est
 
     results = {}
-    ann_est = np.column_stack([lab4[:, :3], np.radians(lab4[:, 3]), np.zeros((K, 2))])
-    if a.known_los:                                            # keep label range, use gimbal bearing
-        ann_est[:, :3] = np.linalg.norm(ann_est[:, :3], axis=1, keepdims=True) * los
+    ann_est = as_pose(lab4)
     results["ANN only"] = ann_est
+    results["ANN only (softmax mean)"] = as_pose(soft_pose(probs))   # extension
     if a.refine:
         results["ANN + LM refine"] = np.array(
             [refine_pose(ann_est[k], uv[k], det[k], los=los[k]) for k in range(K)])
 
     for name, n, alpha, every in CONFIGS:
-        pf = ParticleFilter(n, pool, alpha, every, a.likelihood, a.sigma_px, seed=seed)
-        est = np.array([pf.step(u_f, uv[k], det[k], lab4[k], los[k]) for k in range(K)])
+        pf = ParticleFilter(n, pool, alpha, every, a.likelihood, a.sigma_px, a.proposal, seed=seed)
+        est = np.array([pf.step(u_f, uv[k], det[k], lab4[k], los[k], probs[k]) for k in range(K)])
         results[name] = est
         if a.refine:
             results[name + " + LM refine"] = np.array(
@@ -77,16 +84,19 @@ def run_once(seed, a, predictor, pool, t, truth, u_f):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--likelihood", choices=["inv_mse", "gauss"], default="inv_mse")
-    ap.add_argument("--sigma-px", type=float, default=5.0)
+    ap.add_argument("--sigma-px", type=float, default=5.0, help="gauss likelihood width [px]")
+    ap.add_argument("--proposal", choices=["label", "softmax"], default="label",
+                    help="PF new-particle source: paper (label + error pool) or ANN softmax (extension)")
     ap.add_argument("--refine", action="store_true", help="add LM reprojection refinement curves")
     ap.add_argument("--known-los", action="store_true",
                     help="extension: follower knows its gimbal line of sight (bearing to leader)")
+    ap.add_argument("--model", default=str(MODEL_DIR / "ann.npz"), help="ANN weights (.npz)")
     ap.add_argument("--seeds", type=int, default=10, help="number of Monte-Carlo runs to average")
     ap.add_argument("--seed", type=int, default=1, help="first seed")
     a = ap.parse_args()
 
     t, truth, u_f = build_trajectory()
-    predictor = ANNPredictor()
+    predictor = ANNPredictor(a.model)
     pool = np.load(MODEL_DIR / "error_pool.npy")
 
     runs = []
@@ -109,7 +119,11 @@ def main():
                              n_runs=a.seeds)
         print(f"{name:42s} {mu[0]:8.2f} +-{sd[0]:5.2f} {mu[1]:8.2f} +-{sd[1]:5.2f} "
               f"{mu[2]:8.2f} +-{sd[2]:5.2f}")
-    tag = f"_{a.likelihood}" + ("_refine" if a.refine else "") + ("_los" if a.known_los else "")
+    tag = (f"_{a.likelihood}" + (f"_sig{a.sigma_px:g}" if a.likelihood == "gauss" and a.sigma_px != 5.0 else "")
+           + ("_softprop" if a.proposal == "softmax" else "") + ("_refine" if a.refine else "")
+           + ("_los" if a.known_los else "")
+           + ("" if Path(a.model).name == "ann.npz" else "_" + Path(a.model).stem)
+           + ("" if a.seeds == 10 else f"_{a.seeds}seeds"))   # demo runs don't overwrite results
     json.dump(summary, open(RESULTS_DIR / f"summary{tag}.json", "w"), indent=2)
     np.savez(RESULTS_DIR / f"estimates{tag}.npz", t=t, truth=truth,
              **{k.replace(" ", "_"): v for k, v in results.items()})

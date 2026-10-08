@@ -1,5 +1,6 @@
 # regenerable synthetic dataset (~90 MB) - recreate with: python data_gen.py
 data/*.npz
+results/*seeds.*
 __pycache__/
 *.pyc
 .venv/
