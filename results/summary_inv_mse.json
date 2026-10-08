@@ -8,22 +8,31 @@
     "att_mean_deg_std": 0.03389327517698012,
     "n_runs": 10
   },
+  "ANN only (softmax mean)": {
+    "pos_rmse": 3.0896370086038134,
+    "pos_rmse_std": 0.010392859778238653,
+    "pos_mean": 2.88292054203499,
+    "pos_mean_std": 0.01060156292762745,
+    "att_mean_deg": 2.853159260411299,
+    "att_mean_deg_std": 0.013439061006190377,
+    "n_runs": 10
+  },
   "PF N=1000, a=0.9 every 10 cycles": {
-    "pos_rmse": 4.402107897050017,
-    "pos_rmse_std": 1.853263960745836,
-    "pos_mean": 4.24878295276251,
-    "pos_mean_std": 1.802535566400836,
-    "att_mean_deg": 4.161958764318547,
-    "att_mean_deg_std": 1.4884817955483602,
+    "pos_rmse": 4.387547912717231,
+    "pos_rmse_std": 1.915778518675459,
+    "pos_mean": 4.2638133179512465,
+    "pos_mean_std": 1.8528818145450465,
+    "att_mean_deg": 4.155935401159903,
+    "att_mean_deg_std": 1.5415982828481067,
     "n_runs": 10
   },
   "PF N=5000, a=0.9 every cycle": {
-    "pos_rmse": 3.603940200308957,
-    "pos_rmse_std": 0.8279714533894378,
-    "pos_mean": 3.3754736627950193,
-    "pos_mean_std": 0.6816589602500075,
-    "att_mean_deg": 3.2965492657718833,
-    "att_mean_deg_std": 0.44780694613684396,
+    "pos_rmse": 3.8701656403503883,
+    "pos_rmse_std": 1.420466355401443,
+    "pos_mean": 3.6723064460350208,
+    "pos_mean_std": 1.3492771841205327,
+    "att_mean_deg": 3.6507853912987125,
+    "att_mean_deg_std": 1.1003941558070487,
     "n_runs": 10
   }
 }
